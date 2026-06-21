@@ -1,640 +1,74 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YouTube Live Chat Overlay</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <style>
-    /* ─────────────────────────────────────────────
-       RESET & ROOT TOKENS
-    ───────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8">
+<title>YouTube Chat Overlay (No API Key)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    :root {
-      --yt-red:       #FF0000;
-      --yt-red-soft:  #FF4444;
-      --yt-red-dim:   rgba(255, 0, 0, 0.18);
-      --bg-base:      rgba(10, 10, 14, 0.0);   /* fully transparent so OBS chroma key works */
-      --glass-bg:     rgba(14, 14, 20, 0.72);
-      --glass-border: rgba(255, 255, 255, 0.07);
-      --glass-blur:   14px;
-      --text-primary: #f0f0f5;
-      --text-muted:   rgba(200, 200, 220, 0.55);
-      --radius-msg:   14px;
-      --font:         'Outfit', system-ui, sans-serif;
-      --shadow-msg:   0 4px 24px rgba(0,0,0,0.55);
-    }
-
+<style>
     html, body {
-      width: 100%;
-      height: 100%;
-      background: transparent;
-      font-family: var(--font);
-      overflow: hidden;
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        overflow: hidden;
     }
 
-    /* ─────────────────────────────────────────────
-       CHAT WRAPPER
-    ───────────────────────────────────────────── */
-    #chat-overlay {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      width: 380px;
-      max-height: 100vh;
-      padding: 12px 12px 16px;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      gap: 0;
-      pointer-events: none;
-      overflow: hidden;
+    /* Container */
+    #chat-wrapper {
+        width: 400px;
+        height: 900px;
+        position: relative;
+        overflow: hidden;
+        border-radius: 20px;
+        backdrop-filter: blur(20px) brightness(0.7);
+        background: rgba(0,0,0,0.25);
+        border: 1px solid rgba(255,255,255,0.1);
     }
 
-    /* ─────────────────────────────────────────────
-       MESSAGE BASE
-    ───────────────────────────────────────────── */
-    .chat-msg {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      background: var(--glass-bg);
-      border: 1px solid var(--glass-border);
-      border-radius: var(--radius-msg);
-      padding: 9px 13px 8px;
-      backdrop-filter: blur(var(--glass-blur));
-      -webkit-backdrop-filter: blur(var(--glass-blur));
-      box-shadow: var(--shadow-msg), inset 0 1px 0 rgba(255,255,255,0.04);
-      margin-top: 6px;
-      position: relative;
-      overflow: hidden;
-      will-change: transform, opacity;
-      animation: slideIn 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    /* Iframe styling */
+    iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        transform: scale(1.05);
+        transform-origin: top left;
+        filter: brightness(1.2) contrast(1.1) saturate(1.2);
     }
 
-    /* Left accent line */
-    .chat-msg::before {
-      content: '';
-      position: absolute;
-      left: 0; top: 0; bottom: 0;
-      width: 3px;
-      background: linear-gradient(180deg, var(--user-color, #FF4444) 0%, transparent 100%);
-      border-radius: 3px 0 0 3px;
-      opacity: 0.7;
+    /* Optional: fade edges */
+    #mask {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(to top, transparent 0%, rgba(0,0,0,0.4) 100%);
     }
-
-    /* Shimmer overlay */
-    .chat-msg::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, transparent 60%);
-      pointer-events: none;
-    }
-
-    /* ─────────────────────────────────────────────
-       MESSAGE ROW (avatar + meta)
-    ───────────────────────────────────────────── */
-    .msg-header {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-    }
-
-    .msg-avatar {
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      font-weight: 700;
-      color: #fff;
-      background: var(--user-color, #FF4444);
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
-      position: relative;
-    }
-
-    .msg-avatar::after {
-      content: '';
-      position: absolute;
-      inset: -2px;
-      border-radius: 50%;
-      background: conic-gradient(var(--user-color, #FF4444) 0deg, transparent 180deg);
-      z-index: -1;
-      opacity: 0.4;
-      animation: spinGlow 4s linear infinite;
-    }
-
-    .msg-meta {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      flex-wrap: wrap;
-      min-width: 0;
-    }
-
-    .msg-username {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--user-color, #FF4444);
-      text-shadow: 0 0 12px var(--user-color, rgba(255,68,68,0.5));
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 160px;
-    }
-
-    .msg-badges {
-      display: flex;
-      gap: 2px;
-      flex-shrink: 0;
-    }
-
-    .badge {
-      font-size: 11px;
-      line-height: 1;
-      filter: drop-shadow(0 0 3px rgba(255,200,0,0.6));
-    }
-
-    .msg-time {
-      font-size: 10px;
-      color: var(--text-muted);
-      margin-left: auto;
-      flex-shrink: 0;
-      font-weight: 300;
-    }
-
-    .msg-text {
-      font-size: 13.5px;
-      color: var(--text-primary);
-      line-height: 1.45;
-      word-break: break-word;
-      padding-left: 33px;
-      font-weight: 400;
-    }
-
-    /* ─────────────────────────────────────────────
-       SUPER CHAT STYLES
-    ───────────────────────────────────────────── */
-    .chat-msg.superchat {
-      border-color: rgba(255, 215, 0, 0.25);
-      box-shadow: var(--shadow-msg),
-                  0 0 20px rgba(255, 200, 0, 0.15),
-                  0 0 60px rgba(255, 200, 0, 0.06),
-                  inset 0 1px 0 rgba(255, 215, 0, 0.12);
-      animation: slideIn 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards,
-                 scPulse 3s ease-in-out 0.5s infinite;
-    }
-
-    .chat-msg.superchat::before {
-      background: linear-gradient(180deg, gold 0%, var(--sc-color, gold) 100%);
-      width: 4px;
-      opacity: 1;
-    }
-
-    .sc-banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 10px 6px 33px;
-      margin: 4px -13px -8px;
-      border-radius: 0 0 var(--radius-msg) var(--radius-msg);
-      background: linear-gradient(90deg, var(--sc-color, #F57F17) 0%, color-mix(in srgb, var(--sc-color, #F57F17) 70%, #000) 100%);
-    }
-
-    .sc-amount {
-      font-size: 15px;
-      font-weight: 700;
-      color: #fff;
-      letter-spacing: 0.03em;
-      text-shadow: 0 1px 4px rgba(0,0,0,0.5);
-    }
-
-    .sc-icon {
-      font-size: 16px;
-      filter: drop-shadow(0 0 6px rgba(255,255,255,0.5));
-    }
-
-    /* ─────────────────────────────────────────────
-       FADE-OUT ANIMATION
-    ───────────────────────────────────────────── */
-    .chat-msg.fading {
-      animation: fadeOut 1.2s ease forwards !important;
-    }
-
-    /* ─────────────────────────────────────────────
-       KEYFRAMES
-    ───────────────────────────────────────────── */
-    @keyframes slideIn {
-      0%   { opacity: 0; transform: translateY(28px) scale(0.96); }
-      100% { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    @keyframes fadeOut {
-      0%   { opacity: 1; transform: scaleY(1); max-height: 200px; margin-top: 6px; }
-      40%  { opacity: 0; transform: scaleY(0.9); }
-      100% { opacity: 0; transform: scaleY(0); max-height: 0; margin-top: 0; padding: 0; border-width: 0; }
-    }
-
-    @keyframes scPulse {
-      0%, 100% { box-shadow: var(--shadow-msg), 0 0 20px rgba(255,200,0,0.15), 0 0 60px rgba(255,200,0,0.06), inset 0 1px 0 rgba(255,215,0,0.12); }
-      50%       { box-shadow: var(--shadow-msg), 0 0 30px rgba(255,200,0,0.30), 0 0 80px rgba(255,200,0,0.12), inset 0 1px 0 rgba(255,215,0,0.2); }
-    }
-
-    @keyframes spinGlow {
-      from { transform: rotate(0deg); }
-      to   { transform: rotate(360deg); }
-    }
-
-    /* ─────────────────────────────────────────────
-       YT BRANDING PILL
-    ───────────────────────────────────────────── */
-    #yt-brand {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 12px 5px 10px;
-      background: rgba(14,14,20,0.75);
-      border: 1px solid rgba(255,0,0,0.2);
-      border-radius: 999px;
-      backdrop-filter: blur(12px);
-      margin-bottom: 8px;
-      width: fit-content;
-      pointer-events: none;
-    }
-
-    #yt-brand .yt-logo {
-      width: 20px;
-      height: 14px;
-      background: var(--yt-red);
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    #yt-brand .yt-logo::after {
-      content: '';
-      display: block;
-      width: 0;
-      height: 0;
-      border-left: 7px solid #fff;
-      border-top: 4px solid transparent;
-      border-bottom: 4px solid transparent;
-      margin-left: 2px;
-    }
-
-    #yt-brand span {
-      font-size: 11px;
-      font-weight: 600;
-      color: rgba(255,255,255,0.7);
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-
-    /* ─────────────────────────────────────────────
-       HIDDEN IFRAME for real chat (optional)
-    ───────────────────────────────────────────── */
-    #yt-chat-iframe {
-      position: fixed;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
-      pointer-events: none;
-    }
-  </style>
+</style>
 </head>
+
 <body>
 
-<div id="chat-overlay">
-  <!-- YouTube branding pill -->
-  <div id="yt-brand">
-    <div class="yt-logo"></div>
-    <span>Live Chat</span>
-  </div>
-
-  <!-- Messages container -->
-  <div id="chat-messages"></div>
+<div id="chat-wrapper">
+    <iframe id="ytchat" src="" allowfullscreen></iframe>
+    <div id="mask"></div>
 </div>
 
-<!-- Hidden iframe for real YouTube chat (populated when DEMO_MODE = false) -->
-<iframe id="yt-chat-iframe" title="YouTube Live Chat" allow="autoplay"></iframe>
-
 <script>
-/* ===============================================================
-   CONFIGURATION  --  Edit these two lines
-=============================================================== */
-const VIDEO_ID  = 'zbh2vznPDDM'; // <-- Change this to your YouTube Live video ID
-const DEMO_MODE = false;            // Set to false and add VIDEO_ID for real YouTube chat
+/* ---------------------------------------------------------
+   CONFIG
+--------------------------------------------------------- */
+const VIDEO_ID = "YOUR_VIDEO_ID_HERE";  
+// Zet hier je livestream video ID
 
-/* ===============================================================
-   CONSTANTS
-=============================================================== */
-const MAX_MESSAGES   = 12;
-const FADE_AFTER_MS  = 30000;  // 30 seconds before fade
-const FADE_ANIM_MS   = 1200;   // fade animation duration
-const SHOW_BRAND     = true;   // Show YouTube brand pill
+/* ---------------------------------------------------------
+   BUILD CHAT URL
+--------------------------------------------------------- */
+const iframe = document.getElementById("ytchat");
 
-/* ===============================================================
-   CURATED COLOR PALETTE  (vibrant, contrast-safe on dark bg)
-=============================================================== */
-const USER_COLORS = [
-  '#FF4D6D', '#FF6B35', '#FFD166', '#06D6A0', '#26C6DA',
-  '#4FC3F7', '#7B61FF', '#CE93D8', '#F48FB1', '#80DEEA',
-  '#A5D6A7', '#FFB74D', '#EF9A9A', '#90CAF9', '#B39DDB',
-  '#80CBC4', '#F06292', '#DCE775', '#4DB6AC', '#FF8A65',
-];
-
-/* Super chat tier color map by amount (USD) */
-const SC_TIERS = [
-  { min: 500, color: '#B71C1C', label: '\uD83D\uDD34' },
-  { min: 100, color: '#6A1B9A', label: '\uD83D\uDC9C' },
-  { min:  50, color: '#E65100', label: '\uD83D\uDFE0' },
-  { min:  20, color: '#F57F17', label: '\uD83D\uDFE1' },
-  { min:  10, color: '#00796B', label: '\uD83D\uDFE2' },
-  { min:   5, color: '#1565C0', label: '\uD83D\uDD35' },
-  { min:   1, color: '#1E88E5', label: '\uD83D\uDD35' },
-];
-
-/* ===============================================================
-   DEMO DATA
-=============================================================== */
-const DEMO_USERS = [
-  { name: 'xXDarkSlayer99Xx',  badges: ['mod'] },
-  { name: 'StreamQueen',       badges: ['member', 'verified'] },
-  { name: 'NightOwlGaming',    badges: [] },
-  { name: 'CryptoKing2077',    badges: [] },
-  { name: 'PixelWizard',       badges: ['member'] },
-  { name: 'TechTalker',        badges: [] },
-  { name: 'StargazerLuna',     badges: ['member'] },
-  { name: 'ThunderStruck42',   badges: [] },
-  { name: 'CodeMonkeyDev',     badges: ['mod'] },
-  { name: 'VibeCatcher',       badges: [] },
-  { name: 'SilverFoxFTW',      badges: ['member'] },
-  { name: 'RetroGamerX',       badges: [] },
-  { name: 'NeonDreamer',       badges: ['member', 'verified'] },
-  { name: 'QuantumLeapFrog',   badges: [] },
-  { name: 'MysticSerpent',     badges: ['mod'] },
-  { name: 'CosmicRay77',       badges: [] },
-  { name: 'ArcadeBoss',        badges: ['member'] },
-  { name: 'ShadowFlame',       badges: [] },
-  { name: 'GlitchHunter',      badges: ['member'] },
-  { name: 'ZephyrBreeze',      badges: [] },
-  { name: 'OwnerChannel',      badges: ['owner'] },
-];
-
-const DEMO_MESSAGES = [
-  'This stream is absolutely \uD83D\uDD25\uD83D\uDD25\uD83D\uDD25',
-  "LET'S GOOOO! We're finally here!",
-  'First time watching, this is amazing!',
-  'Chat is moving so fast lmao',
-  'Can we get a W in the chat? \uD83C\uDFC6',
-  'PogChamp PogChamp PogChamp',
-  'The production quality is insane',
-  "Been here since the beginning, love this channel!",
-  'Anyone else watch from the VOD later? \uD83D\uDC40',
-  'This is exactly what I needed today fr',
-  'The editing on this is top tier \uD83C\uDFAC',
-  'How many people are watching rn?',
-  'Shoutout from Brazil \uD83C\uDDE7\uD83C\uDDF7',
-  'Just subbed, worth every penny! \u2B50',
-  'The audio sounds great today!',
-  'Keep it up, this content never misses!',
-  '1000 IQ plays right here',
-  "I've watched this part 3 times already \uD83D\uDE02",
-  'No way that just happened \uD83D\uDE31',
-  'Stream sniper in chat? \uD83D\uDC40',
-  'This is why I come back every time',
-  'OMEGALUL that reaction was priceless',
-  'The grind never stops! \uD83D\uDCAA',
-  'Watching from the office shhh \uD83E\uDD2B',
-  "POV: you're addicted to this stream",
-  'Real ones know \uD83D\uDC4A',
-  'The community here is so wholesome \u2764\uFE0F',
-  'Clip that! Someone clip that!',
-  'GG! GG! GG!',
-  'Absolute cinema \uD83C\uDFA5',
-];
-
-const DEMO_SC_MESSAGES = [
-  'Keep up the amazing work! This stream made my whole week! \uD83D\uDC96',
-  'Thank you for everything you do for the community!',
-  "Happy anniversary to the channel! Here's to many more! \uD83C\uDF89",
-  'You deserve every single one of these subs! Love the stream!',
-  'Watching from the hospital, you always cheer me up. Thank you \u2764\uFE0F',
-  'Best content creator on the platform, hands down!',
-  'You literally saved my day with this stream. LOVE YOU!',
-];
-
-const DEMO_SC_AMOUNTS = [500, 100, 50, 20, 10, 5, 2];
-
-/* ===============================================================
-   STATE
-=============================================================== */
-const userColorCache = new Map();
-let msgIdCounter = 0;
-
-/* ===============================================================
-   UTILITIES
-=============================================================== */
-function getUserColor(username) {
-  if (!userColorCache.has(username)) {
-    let hash = 0;
-    for (let i = 0; i < username.length; i++) {
-      hash = (hash * 31 + username.charCodeAt(i)) | 0;
-    }
-    const idx = Math.abs(hash) % USER_COLORS.length;
-    userColorCache.set(username, USER_COLORS[idx]);
-  }
-  return userColorCache.get(username);
-}
-
-function getInitials(name) {
-  return name.replace(/[^a-zA-Z]/g, '').substring(0, 2).toUpperCase() || '?';
-}
-
-function formatTime(date) {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function getSCTier(amount) {
-  return SC_TIERS.find(t => amount >= t.min) || SC_TIERS[SC_TIERS.length - 1];
-}
-
-function renderBadges(badges) {
-  const map = { mod: '\uD83D\uDEE1\uFE0F', member: '\u2B50', owner: '\uD83D\uDC51', verified: '\u2714\uFE0F' };
-  return badges.map(b => map[b] ? '<span class="badge" title="' + b + '">' + map[b] + '</span>' : '').join('');
-}
-
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-/* ===============================================================
-   CORE: ADD MESSAGE TO DOM
-=============================================================== */
-function addMessage(opts) {
-  var username    = opts.username;
-  var badges      = opts.badges      || [];
-  var text        = opts.text        || '';
-  var isSuperchat = opts.isSuperchat || false;
-  var scAmount    = opts.scAmount    || 0;
-  var timestamp   = opts.timestamp   || new Date();
-
-  var container = document.getElementById('chat-messages');
-  var color     = getUserColor(username);
-  var id        = 'msg-' + (++msgIdCounter);
-
-  var el        = document.createElement('div');
-  el.className  = 'chat-msg' + (isSuperchat ? ' superchat' : '');
-  el.id         = id;
-  el.style.setProperty('--user-color', color);
-
-  var scTier = null;
-  if (isSuperchat) {
-    scTier = getSCTier(scAmount);
-    el.style.setProperty('--sc-color', scTier.color);
-  }
-
-  var scBannerHtml = '';
-  if (isSuperchat && scTier) {
-    scBannerHtml = [
-      '<div class="sc-banner" style="--sc-color:' + scTier.color + '">',
-      '  <span class="sc-amount">$' + scAmount.toFixed(2) + '</span>',
-      '  <span class="sc-icon">' + scTier.label + '</span>',
-      '</div>',
-    ].join('');
-  }
-
-  el.innerHTML = [
-    '<div class="msg-header">',
-    '  <div class="msg-avatar">' + getInitials(username) + '</div>',
-    '  <div class="msg-meta">',
-    '    <span class="msg-username">' + escapeHtml(username) + '</span>',
-    '    <span class="msg-badges">' + renderBadges(badges) + '</span>',
-    '  </div>',
-    '  <span class="msg-time">' + formatTime(timestamp) + '</span>',
-    '</div>',
-    '<div class="msg-text">' + escapeHtml(text) + '</div>',
-    scBannerHtml,
-  ].join('');
-
-  container.appendChild(el);
-
-  /* Remove oldest if over max */
-  var allMsgs = container.querySelectorAll('.chat-msg');
-  if (allMsgs.length > MAX_MESSAGES) {
-    var oldest = allMsgs[0];
-    oldest.classList.add('fading');
-    setTimeout(function() { if (oldest.parentNode) oldest.remove(); }, FADE_ANIM_MS);
-  }
-
-  /* Schedule fade-out */
-  var fadeDelay = isSuperchat ? Math.floor(FADE_AFTER_MS * 1.5) : FADE_AFTER_MS;
-  setTimeout(function() {
-    var msgEl = document.getElementById(id);
-    if (msgEl) {
-      msgEl.classList.add('fading');
-      setTimeout(function() { if (msgEl.parentNode) msgEl.remove(); }, FADE_ANIM_MS);
-    }
-  }, fadeDelay);
-
-  /* Scroll into view */
-  el.scrollIntoView({ behavior: 'smooth', block: 'end' });
-}
-
-/* ===============================================================
-   DEMO MODE ENGINE
-=============================================================== */
-function runDemoMode() {
-  var introDelays = [0, 600, 1100, 1700, 2200, 2800];
-  introDelays.forEach(function(delay, i) {
-    setTimeout(function() { spawnDemoMessage(i === 3); }, delay);
-  });
-
-  function scheduleNext() {
-    var delay = 1800 + Math.random() * 3500;
-    setTimeout(function() {
-      spawnDemoMessage(Math.random() < 0.13);
-      scheduleNext();
-    }, delay);
-  }
-  setTimeout(scheduleNext, 3500);
-}
-
-function spawnDemoMessage(forceSC) {
-  var user = DEMO_USERS[Math.floor(Math.random() * DEMO_USERS.length)];
-  var isSC = forceSC || Math.random() < 0.12;
-
-  if (isSC) {
-    var amount = DEMO_SC_AMOUNTS[Math.floor(Math.random() * DEMO_SC_AMOUNTS.length)];
-    var text   = DEMO_SC_MESSAGES[Math.floor(Math.random() * DEMO_SC_MESSAGES.length)];
-    addMessage({ username: user.name, badges: user.badges, text: text, isSuperchat: true, scAmount: amount });
-  } else {
-    var text = DEMO_MESSAGES[Math.floor(Math.random() * DEMO_MESSAGES.length)];
-    addMessage({ username: user.name, badges: user.badges, text: text });
-  }
-}
-
-/* ===============================================================
-   REAL YOUTUBE CHAT  (iframe embed approach)
-   ─────────────────────────────────────────────────────────────
-   NOTE: YouTube's live_chat iframe is sandboxed and cross-origin,
-   so postMessage interception is not reliable without a backend.
-   Recommended approach:
-     1) Use DEMO_MODE = true for a beautiful overlay.
-     2) For real chat, use the YouTube Data API v3 to poll
-        liveChatMessages and call addMessage() with real data.
-        See README.md for full setup instructions.
-=============================================================== */
-function setupRealChat() {
-  if (!VIDEO_ID || VIDEO_ID === 'your_video_id') {
-    console.warn('[YT Overlay] VIDEO_ID not set. Using demo mode as fallback.');
-    runDemoMode();
-    return;
-  }
-
-  var iframe = document.getElementById('yt-chat-iframe');
-  iframe.src = 'https://www.youtube.com/live_chat?v=' + VIDEO_ID + '&embed_domain=' + (location.hostname || 'localhost');
-
-  console.info('[YT Overlay] Real chat mode: iframe loaded. Integrate YouTube Data API v3 for message parsing. See README.md.');
-
-  /* Uncomment below if you want demo messages alongside while developing: */
-  /* runDemoMode(); */
-}
-
-/* ===============================================================
-   BOOTSTRAP
-=============================================================== */
-document.addEventListener('DOMContentLoaded', function() {
-  if (!SHOW_BRAND) {
-    var brand = document.getElementById('yt-brand');
-    if (brand) brand.style.display = 'none';
-  }
-
-  if (DEMO_MODE) {
-    runDemoMode();
-  } else {
-    setupRealChat();
-  }
-});
-
-/* ===============================================================
-   PUBLIC API
-   Call from console or external script:
-   window.ytChat.addMessage({ username, badges, text, isSuperchat, scAmount })
-=============================================================== */
-window.ytChat = { addMessage: addMessage };
+iframe.src =
+  "https://www.youtube.com/live_chat?v=" +
+  VIDEO_ID +
+  "&embed_domain=p1xelpp.github.io";
 </script>
+
 </body>
 </html>
