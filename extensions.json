@@ -1,0 +1,8 @@
+{
+  "packName": "Stream Extensions",
+  "version": "1.0.0",
+  "extensions": [
+    { "id": "twitch-chat", "path": "twitch" },
+    { "id": "youtube-chat", "path": "youtube" }
+  ]
+}

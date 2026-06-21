@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Twitch Chat Overlay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/tmi.js@1.4.2/dist/tmi.min.js"></script>
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --twitch-purple: #9146FF;
+      --twitch-light:  #BF94E4;
+      --twitch-dark:   #6441A4;
+      --bg-base:       rgba(10, 6, 20, 0.82);
+      --glass-bg:      rgba(255, 255, 255, 0.04);
+      --glass-border:  rgba(145, 70, 255, 0.18);
+      --glass-shadow:  rgba(145, 70, 255, 0.12);
+      --text-primary:  #F0E8FF;
+      --text-muted:    rgba(240, 232, 255, 0.45);
+      --radius-msg:    14px;
+      --font:          'Outfit', sans-serif;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: var(--font);
+    }
+
+    /* ─── Animated Glow Background ────────────────────────────────── */
+    #root {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 12px 10px 10px;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* Subtle ambient orbs */
+    #root::before, #root::after {
+      content: '';
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      animation: orb-drift 12s ease-in-out infinite alternate;
+    }
+    #root::before {
+      width: 340px; height: 340px;
+      background: radial-gradient(circle, rgba(145,70,255,0.10) 0%, transparent 70%);
+      top: -60px; left: -60px;
+    }
+    #root::after {
+      width: 260px; height: 260px;
+      background: radial-gradient(circle, rgba(191,148,228,0.08) 0%, transparent 70%);
+      bottom: -40px; right: -40px;
+      animation-delay: -6s;
+    }
+    @keyframes orb-drift {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(30px, 20px) scale(1.15); }
+    }
+
+    /* ─── Header / Channel Badge ───────────────────────────────────── */
+    #header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: rgba(145, 70, 255, 0.12);
+      border: 1px solid rgba(145, 70, 255, 0.30);
+      border-radius: 40px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: 0 0 24px rgba(145,70,255,0.18), inset 0 1px 0 rgba(255,255,255,0.08);
+      margin-bottom: 12px;
+      flex-shrink: 0;
+    }
+    #header .live-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #FF4136;
+      box-shadow: 0 0 8px #FF4136, 0 0 16px rgba(255,65,54,0.6);
+      animation: pulse-dot 1.8s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50%       { transform: scale(1.35); opacity: 0.7; }
+    }
+    #header .twitch-icon {
+      width: 18px; height: 18px;
+      fill: var(--twitch-purple);
+      flex-shrink: 0;
+      filter: drop-shadow(0 0 6px rgba(145,70,255,0.8));
+    }
+    #header .channel-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--twitch-light);
+      letter-spacing: 0.03em;
+      text-shadow: 0 0 12px rgba(191,148,228,0.6);
+    }
+    #header .viewer-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-left: auto;
+      letter-spacing: 0.04em;
+    }
+
+    /* ─── Messages Container ───────────────────────────────────────── */
+    #messages {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Top fade mask */
+    #messages::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 60px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.0), transparent);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* ─── Single Message ───────────────────────────────────────────── */
+    .msg {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 9px 13px 8px;
+      border-radius: var(--radius-msg);
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow:
+        0 4px 24px var(--glass-shadow),
+        inset 0 1px 0 rgba(255,255,255,0.06),
+        0 0 0 0.5px rgba(145,70,255,0.08);
+      position: relative;
+      overflow: hidden;
+
+      /* Spring slide-in */
+      animation: msg-enter 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      transform-origin: bottom center;
+    }
+
+    /* Shimmer line at top */
+    .msg::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(145, 70, 255, 0.40) 40%,
+        rgba(191, 148, 228, 0.30) 60%,
+        transparent 100%);
+    }
+
+    @keyframes msg-enter {
+      from {
+        opacity: 0;
+        transform: translateY(22px) scale(0.96);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    /* Fade-out state */
+    .msg.fading {
+      animation: msg-exit 0.55s ease-in forwards;
+    }
+    @keyframes msg-exit {
+      from { opacity: 1; transform: translateY(0) scale(1); max-height: 120px; }
+      to   { opacity: 0; transform: translateY(-8px) scale(0.97); max-height: 0; padding: 0; margin: 0; border-width: 0; }
+    }
+
+    /* ─── Message Row ──────────────────────────────────────────────── */
+    .msg-meta {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    .msg-badges {
+      display: flex;
+      gap: 3px;
+      align-items: center;
+    }
+    .badge {
+      font-size: 12px;
+      line-height: 1;
+      filter: drop-shadow(0 0 4px rgba(145,70,255,0.5));
+    }
+    .username {
+      font-size: 13.5px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: default;
+      transition: filter 0.2s;
+    }
+    .username:hover {
+      filter: brightness(1.25);
+    }
+    .timestamp {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-left: auto;
+      letter-spacing: 0.03em;
+      flex-shrink: 0;
+    }
+    .msg-body {
+      font-size: 13.5px;
+      font-weight: 400;
+      color: var(--text-primary);
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    /* Emote-like text highlights */
+    .emote-text {
+      display: inline-block;
+      font-weight: 600;
+      font-size: 12.5px;
+      padding: 1px 5px;
+      border-radius: 5px;
+      background: rgba(145,70,255,0.18);
+      border: 1px solid rgba(145,70,255,0.25);
+      color: var(--twitch-light);
+      margin: 0 1px;
+      letter-spacing: 0.02em;
+    }
+
+    /* ─── Scrollbar (hidden) ───────────────────────────────────────── */
+    ::-webkit-scrollbar { display: none; }
+
+    /* ─── Demo badge ───────────────────────────────────────────────── */
+    #demo-badge {
+      position: fixed;
+      bottom: 10px;
+      right: 12px;
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      pointer-events: none;
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+<div id="root">
+  <div id="header">
+    <div class="live-dot"></div>
+    <svg class="twitch-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/>
+    </svg>
+    <span class="channel-name" id="channel-display">Loading...</span>
+    <span class="viewer-label" id="mode-label">DEMO</span>
+  </div>
+  <div id="messages"></div>
+</div>
+<div id="demo-badge" style="display:none;">DEMO MODE</div>
+
+<script>
+// =======================================================================
+//  CONFIGURATION - edit these two lines
+// =======================================================================
+const CHANNEL   = 'kewithattyt'; // Change this to your Twitch channel
+const DEMO_MODE = false;                // Set to false when using with real Twitch
+// =======================================================================
+
+const MAX_MESSAGES         = 12;
+const FADE_AFTER_MS        = 30000; // 30 seconds
+const DEMO_INTERVAL_MIN_MS = 1600;
+const DEMO_INTERVAL_MAX_MS = 4200;
+
+// Curated vibrant username palette
+const USERNAME_PALETTE = [
+  '#FF6B9D', '#C44BFF', '#4BFFD5', '#FFB347', '#7DF9FF',
+  '#FF5E87', '#ADFF2F', '#FF8C69', '#40E0D0', '#DA70D6',
+  '#FF6347', '#7FFFD4', '#FFA07A', '#98FB98', '#DDA0DD',
+  '#F08080', '#E0B0FF', '#BAFFA5', '#FFD700', '#87CEEB',
+];
+
+// Emote tokens that get styled as chips
+const EMOTE_TOKENS = new Set([
+  'PogChamp','Pog','PogU','POGGERS','LUL','KEKW','Kappa','kreygasm',
+  'monkaS','monkaHmm','EZ','GG','OMEGALUL','FeelsBadMan','FeelsGoodMan',
+  'HYPERS','LULW','PauseChamp','gg','ez','AYAYA','NODDERS','NODGERS',
+  'peepoHappy','peepoSad','pepeD','catJAM','EZclap','VoHiYo',
+  'Pepega','BOOBA','clueless','5Head','TriHard','WutFace','BibleThump',
+  'SeemsGood','HeyGuys','NotLikeThis','ResidentSleeper','SwiftRage',
+]);
+
+// Demo users
+const DEMO_USERS = [
+  { name:'StreamKing',         badges:['broadcaster']            },
+  { name:'xXNightWolfXx',      badges:['mod']                    },
+  { name:'sakura_vibes',       badges:['subscriber','vip']       },
+  { name:'retro_gamer99',      badges:['subscriber']             },
+  { name:'glitchh_',           badges:['mod','subscriber']       },
+  { name:'cosmicpixel',        badges:[]                         },
+  { name:'TurboTurtle',        badges:['subscriber']             },
+  { name:'lemondrizzle',       badges:[]                         },
+  { name:'NeonShadow42',       badges:['vip','subscriber']       },
+  { name:'HypeTrainConductor', badges:['mod']                    },
+  { name:'PurpleRainDrop',     badges:['subscriber']             },
+  { name:'starfield_dev',      badges:[]                         },
+  { name:'cryptochimp',        badges:[]                         },
+  { name:'ViperStrike9',       badges:['subscriber','vip']       },
+  { name:'kawaiibunny',        badges:['subscriber']             },
+];
+
+const DEMO_MESSAGES = [
+  'PogChamp this is insane!!!',
+  'LUL did you just see that??',
+  'KEKW KEKW KEKW',
+  'no way bro actually pogged off',
+  'first time catching the stream live Pog',
+  'that was actually cracked GG',
+  'PauseChamp wait for it...',
+  'monkaS monkaS monkaS',
+  'OMEGALUL I literally can\'t',
+  'EZ Clap lets gooooo',
+  'this stream is literally the best part of my day no cap',
+  'HeyGuys what did I miss',
+  'yo the gameplay today is actually insane',
+  'HYPERS HYPERS HYPERS',
+  'FeelsGoodMan we\'re winning chat',
+  'ResidentSleeper nah jk this is peak content',
+  'bro is built different ngl',
+  'peepoHappy 7 sub months hype!',
+  'chat is actually going feral rn lol',
+  'EZclap never doubt the man',
+  'NODDERS he cooked',
+  'sub hype!! 🎉',
+  'the timing on that was INSANE',
+  'SwiftRage WHY THOUGH',
+  'someone clip that holy moly',
+  'W streamer W chat W content',
+  'catJAM this BGM goes hard',
+  'SeemsGood positive vibes only',
+  '5Head just do it like this bro ez',
+  'GG EZ no cap fr fr',
+  '🔥🔥🔥 LETS GO',
+  'this dude is actually trolling us',
+  'clip it clip it clip it',
+  'VibeCheck passed ✅',
+  'this is why I\'m here every stream',
+  'bro went from 0 to 100 real quick',
+  'NotLikeThis not like this chat',
+  'the music + gameplay combo is Pog',
+  'keep grinding king 👑',
+  'I showed my friend this stream and now they\'re hooked lol',
+];
+
+// Helpers
+function getUserColor(username) {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return USERNAME_PALETTE[Math.abs(hash) % USERNAME_PALETTE.length];
+}
+
+function getBadgeEmojis(badges) {
+  const map = { broadcaster:'👑', mod:'⚔️', vip:'💎', subscriber:'⭐' };
+  return (badges || []).map(b => map[b] || '').filter(Boolean);
+}
+
+function formatTime(date) {
+  return date.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+}
+
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function parseMessageHTML(text) {
+  return text.split(/(\s+)/).map(function(token) {
+    var clean = token.trim();
+    if (EMOTE_TOKENS.has(clean)) {
+      return '<span class="emote-text">' + escapeHTML(clean) + '</span>';
+    }
+    return escapeHTML(token);
+  }).join('');
+}
+
+function rand(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function pick(arr) {
+  return arr[rand(0, arr.length - 1)];
+}
+
+// DOM
+var $messages       = document.getElementById('messages');
+var $channelDisplay = document.getElementById('channel-display');
+var $modeLabel      = document.getElementById('mode-label');
+var $demoBadge      = document.getElementById('demo-badge');
+
+var messageCount = 0;
+
+function addMessage(opts) {
+  var username   = opts.username;
+  var color      = opts.color || getUserColor(username);
+  var badges     = opts.badges || [];
+  var text       = opts.text || '';
+
+  var now          = new Date();
+  var badgeEmojis  = getBadgeEmojis(badges);
+  var parsedText   = parseMessageHTML(text);
+
+  var el = document.createElement('div');
+  el.className = 'msg';
+  el.id = 'msg-' + (++messageCount);
+
+  var badgesHTML = '';
+  if (badgeEmojis.length) {
+    badgesHTML = '<div class="msg-badges">' +
+      badgeEmojis.map(function(e){ return '<span class="badge">' + e + '</span>'; }).join('') +
+      '</div>';
+  }
+
+  el.innerHTML =
+    '<div class="msg-meta">' +
+      badgesHTML +
+      '<span class="username" style="color:' + color + ';text-shadow:0 0 14px ' + color + '60;">' +
+        escapeHTML(username) +
+      '</span>' +
+      '<span class="timestamp">' + formatTime(now) + '</span>' +
+    '</div>' +
+    '<div class="msg-body">' + parsedText + '</div>';
+
+  $messages.appendChild(el);
+
+  // Enforce max
+  var all = $messages.querySelectorAll('.msg:not(.fading)');
+  if (all.length > MAX_MESSAGES) {
+    removeMessage(all[0]);
+  }
+
+  // Auto-fade
+  el._fadeTimer = setTimeout(function(){ removeMessage(el); }, FADE_AFTER_MS);
+}
+
+function removeMessage(el) {
+  if (!el || el.classList.contains('fading')) return;
+  clearTimeout(el._fadeTimer);
+  el.classList.add('fading');
+  el.addEventListener('animationend', function(){ el.remove(); }, { once: true });
+}
+
+// Demo mode
+function startDemo() {
+  $demoBadge.style.display = 'block';
+  $modeLabel.textContent   = 'DEMO';
+  $channelDisplay.textContent = '#' + CHANNEL;
+
+  // Seed immediately
+  var seedCount = rand(3, 5);
+  for (var i = 0; i < seedCount; i++) {
+    (function(idx){
+      setTimeout(function(){ spawnDemoMessage(); }, idx * 380);
+    })(i);
+  }
+
+  scheduleNext();
+}
+
+function spawnDemoMessage() {
+  var user = pick(DEMO_USERS);
+  addMessage({ username: user.name, badges: user.badges, text: pick(DEMO_MESSAGES) });
+}
+
+function scheduleNext() {
+  var delay = rand(DEMO_INTERVAL_MIN_MS, DEMO_INTERVAL_MAX_MS);
+  setTimeout(function(){
+    spawnDemoMessage();
+    scheduleNext();
+  }, delay);
+}
+
+// Real Twitch via tmi.js
+function startTwitch() {
+  $modeLabel.textContent      = 'CONNECTING...';
+  $channelDisplay.textContent = '#' + CHANNEL;
+
+  var client = new tmi.Client({
+    channels: [CHANNEL],
+    connection: { reconnect: true, secure: true },
+  });
+
+  client.connect().catch(function(err){ console.error(err); });
+
+  client.on('message', function(channel, tags, message, self) {
+    if (self) return;
+    var badges = [];
+    if (tags.badges) {
+      if (tags.badges.broadcaster) badges.push('broadcaster');
+      if (tags.badges.moderator)   badges.push('mod');
+      if (tags.badges.vip)         badges.push('vip');
+      if (tags.badges.subscriber)  badges.push('subscriber');
+    }
+    addMessage({
+      username: tags['display-name'] || tags.username || 'anon',
+      color:    tags.color || null,
+      badges:   badges,
+      text:     message,
+    });
+  });
+
+  client.on('connected', function() {
+    $modeLabel.textContent  = '● LIVE';
+    $modeLabel.style.color  = '#4BFF91';
+    $modeLabel.style.textShadow = '0 0 8px rgba(75,255,145,0.6)';
+  });
+
+  client.on('disconnected', function() {
+    $modeLabel.textContent = 'OFFLINE';
+    $modeLabel.style.color = '#FF4136';
+  });
+}
+
+// Boot
+if (DEMO_MODE) {
+  startDemo();
+} else {
+  startTwitch();
+}
+</script>
+</body>
+</html>

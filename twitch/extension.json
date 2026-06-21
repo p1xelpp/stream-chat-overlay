@@ -1,0 +1,19 @@
+{
+  "id": "twitch-chat",
+  "name": "Twitch Chat Overlay",
+  "version": "1.0.0",
+  "description": "Beautiful glassmorphism Twitch chat overlay with animated messages, badges, emotes, and real Twitch integration.",
+  "author": "Stream Pack",
+  "icon": "🟣",
+  "category": "chat",
+  "platform": "twitch",
+  "platformColor": "#9146FF",
+  "entry": "index.html",
+  "tags": ["chat", "overlay", "twitch"],
+  "settings": [
+    { "key": "channel", "label": "Channel Name", "type": "text", "default": "your_channel", "placeholder": "your_twitch_username" },
+    { "key": "demoMode", "label": "Demo Mode", "type": "toggle", "default": true },
+    { "key": "maxMessages", "label": "Max Messages", "type": "number", "default": 12, "min": 5, "max": 30 },
+    { "key": "fadeTimeout", "label": "Fade After (seconds)", "type": "number", "default": 30, "min": 5, "max": 120 }
+  ]
+}
