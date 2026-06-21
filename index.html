@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stream Chat Overlay – p1xelpp</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+    body {
+        margin: 0;
+        font-family: "Inter", Arial, sans-serif;
+        background: #0d0d0f;
+        color: white;
+        text-align: center;
+    }
+
+    header {
+        padding: 60px 20px;
+    }
+
+    h1 {
+        font-size: 42px;
+        margin-bottom: 10px;
+    }
+
+    p.subtitle {
+        font-size: 20px;
+        opacity: 0.7;
+        margin-bottom: 40px;
+    }
+
+    .btn {
+        display: inline-block;
+        padding: 14px 26px;
+        margin: 10px;
+        border-radius: 10px;
+        font-size: 18px;
+        text-decoration: none;
+        color: white;
+        background: #ff0033;
+        transition: 0.2s;
+    }
+
+    .btn:hover {
+        background: #ff335c;
+        transform: translateY(-2px);
+    }
+
+    section {
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 0 20px;
+        text-align: left;
+    }
+
+    h2 {
+        margin-top: 40px;
+        font-size: 28px;
+    }
+
+    ul {
+        line-height: 1.8;
+        font-size: 18px;
+    }
+
+    footer {
+        margin-top: 60px;
+        padding: 20px;
+        opacity: 0.5;
+        font-size: 14px;
+    }
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>Stream Chat Overlay</h1>
+    <p class="subtitle">A clean, glassmorphism YouTube Live chat overlay for OBS Studio.</p>
+
+    <a class="btn" href="./youtube/index.html">▶ Open Overlay for youtube</a>
+    <a class="btn" href="./twitch/index.html">▶ Open Overlay for twitch</a>
+    <a class="btn" href="https://github.com/p1xelpp/stream-chat-overlay">GitHub Repo</a>
+</header>
+
+<section>
+    <h2>✨ Features</h2>
+    <ul>
+        <li>Glassmorphism-style chat bubbles</li>
+        <li>Auto-fading messages</li>
+        <li>Badges: Owner, Mod, Member, Verified</li>
+        <li>Super Chat color tiers</li>
+        <li>Demo mode included</li>
+        <li>Fully OBS-compatible</li>
+    </ul>
+
+    <h2>🚀 How to Use</h2>
+    <ul>
+        <li>Open OBS Studio</li>
+        <li>Add a <b>Browser Source</b></li>
+        <li>Set URL to: <code>https://p1xelpp.github.io/stream-chat-overlay/overlay/</code></li>
+        <li>Set width to 400 and height to 900</li>
+        <li>Enable “Refresh when active”</li>
+    </ul>
+
+    <h2>🛠️ Configuration</h2>
+    <p>Edit <code>overlay/index.html</code> to set:</p>
+    <ul>
+        <li><code>DEMO_MODE = false</code></li>
+        <li><code>VIDEO_ID = "your_live_video_id"</code></li>
+        <li><code>API_KEY = "your_youtube_api_key"</code></li>
+    </ul>
+
+    <h2>❤️ Made by p1xelpp</h2>
+    <p>Built for streamers who want a clean, modern chat overlay.</p>
+</section>
+
+<footer>
+    © 2026 p1xelpp — Stream Chat Overlay
+</footer>
+
+</body>
+</html>
